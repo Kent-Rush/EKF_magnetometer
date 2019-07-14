@@ -2,26 +2,12 @@ from numpy import *
 from numpy.linalg import *
 from pyquaternion import Quaternion
 import matplotlib.pyplot as plt
-from scipy.integrate import ode
+
 
 def crux(A):
     return array([[0, -A[2], A[1]],
                   [A[2], 0, -A[0]],
                   [-A[1],A[0], 0]])
-
-def quat2dcm(E,n):
-    #n = scalar part
-    #E = vector part
-    
-    dcm = (2*n**2 - 1)*identity(3) + 2*outer(E,E) - 2*n*crux(E) 
-
-    return dcm
-
-def swap_index(ibar, c):
-    if ibar < c:
-        return ibar
-    else:
-        return ibar + 1
 
 def propagate(t, state, inertia):
     eta = state[0]
@@ -33,7 +19,6 @@ def propagate(t, state, inertia):
     domega = -inv(inertia)@crux(omega)@inertia@omega
 
     return hstack([deta, deps, domega])
-
 
 def get_F(omega, dt):
 
@@ -47,77 +32,12 @@ def get_F(omega, dt):
 
     return F/2*dt + identity(4)
 
-
-def truncated_F(omega, eps, eta, dt, c):
-    quat = hstack([eta, eps])
-
-    w1 = omega[0]
-    w2 = omega[1]
-    w3 = omega[2]
-    F = array([[ 0,-w1,-w2,-w3],
-               [w1,  0, w3,-w2],
-               [w2,-w3,  0, w1],
-               [w3, w2,-w1, 0]])
-
-
-    F_trunc = zeros((3,3))
-    for ibar in range(3):
-        for jbar in range(3):
-            i = swap_index(ibar, c)
-            j = swap_index(jbar, c)
-            F_trunc[ibar,jbar] = F[i,j] - quat[j]/quat[c]*F[i,c]
-
-    return .5*F_trunc*dt + identity(3)
-
-
-
 def get_B(eps, eta, inertia):
     deps = .5*(eta*identity(3) + crux(eps))
     deta = -.5*eps
     B = vstack([deps, deta])@inv(inertia)
     return B
 
-
-
-def get_H(eps, eta, b_eci):
-    q1 = eta
-    q2 = eps[0]
-    q3 = eps[1]
-    q4 = eps[2]
-    
-
-    b_hat = b_eci/norm(b_eci)
-    dCTdq1 = array([[ q1, q4,-q3],
-                    [-q4, q1, q2],
-                    [ q3,-q2, q1]])
-
-    dCTdq2 = array([[ q2, q3, q4],
-                    [ q3,-q2, q1],
-                    [ q4,-q1,-q2]])
-
-    dCTdq3 = array([[-q3, q2,-q1],
-                    [ q2, q3, q4],
-                    [ q1, q4,-q3]])
-
-    dCTdq4 = array([[-q4, q1, q2],
-                    [-q1,-q4, q3],
-                    [ q2, q3, q4]])
-
-    H = vstack([2*dCTdq1@b_hat, 2*dCTdq2@b_hat, 2*dCTdq3@b_hat, 2*dCTdq4@b_hat]).T
-
-    return H
-
-def truncated_H(eps, eta, b_eci, c):
-    quat = hstack([eta, eps])
-    H = get_H(eps, eta, b_eci)
-
-    H_trunc = zeros((3,3))
-    for i in range(3):
-        for jbar in range(3):
-            j = swap_index(jbar, c)
-            H_trunc[i, jbar] = H[i,j] - quat[j]/quat[c]*H[i,c]
-
-    return H_trunc
 
 def quat_mult(E1, n1, E2, n2):
 
@@ -139,50 +59,19 @@ def custom_H(v, E, n):
                   [ qy,-qz, qw, qx],
                   [ qz, qy,-qx, qw]])
 
-
-
-
-#Simulate rotating spacecraft
-angular_rate = array([1,1,5])*1e-3
-inertia = array([[1,.04,.05],
-                 [.04, 1.5, .03],
-                 [.05, .03, 1.2]])
-# inertia = identity(3)
-quaternion = array([1,0,0,0])
-dt = 1.5
-tspan = 150*60
-
-simulate = True
-if simulate:
-    state = hstack([quaternion, angular_rate])
+def quat2dcm(E,n):
+    #n = scalar part
+    #E = vector part
     
-    solver = ode(propagate)
-    solver.set_integrator('lsoda')
-    solver.set_initial_value(state, 0)
-    solver.set_f_params(inertia)
-    
-    print('Simulating')
-    
-    newstate = []
-    t = []
-    percent = 10
-    while solver.successful() and solver.t < tspan:
-        newstate.append(solver.y)
-        t.append(solver.t)
-        solver.integrate(solver.t + dt)
-        if solver.t/tspan*100 > percent:
-            print(percent, '% Simulated')
-            percent += 10
-    
-    newstate = vstack(newstate)
-    t = vstack(t)
-    save('newstate.npy', newstate )
-    save('t.npy', t)
-else:
-    newstate = load('newstate.npy')
-    t = load('t.npy')
+    dcm = (2*n**2 - 1)*identity(3) + 2*outer(E,E) - 2*n*crux(E) 
 
+    return dcm
 
+newstate = load('newstate.npy')
+t = load('t.npy')
+inertia = load('inertia.npy')
+tspan = t[-1]
+dt = load('dt.npy')
 #Simulate measurements
 
 MAGNETOMETER_NOISE = 1e-3
@@ -204,16 +93,12 @@ for state in newstate:
 b_meas = vstack(b_meas)
 w_meas = vstack(w_meas)
 
-#Simulate EKF
-
-x_posteriori = array(list(Quaternion.random()))
-#x_posteriori = array(list(Quaternion(axis = [1,0,0], angle = 2)))
+#x_posteriori = array(list(Quaternion.random()))
+x_posteriori = array(list(Quaternion(axis = [1,0,0], angle = 2)))
 P_posteriori = identity(4)*1e-5
 
 R = diag([MAGNETOMETER_NOISE**2]*3)
 
-
-print('Simulating EKF')
 quat_estimate = []
 Ks = []
 errors = []
@@ -277,19 +162,24 @@ plt.plot(t,Ks)
 plt.title('norm(K) vs Time')
 
 plt.figure()
-plt.plot(t,error)
+plt.semilogy(t,error)
 plt.title('Error vs Time')
+plt.xlabel('Time [s]')
+plt.ylabel('Residual Error')
+plt.savefig('Error vs time.png')
 
 quat_actual = newstate[:,0:4]
 
 fig = plt.figure()
 ax = plt.axes()
-plt.plot(t, quat_actual, 'b')
-plt.plot(t, quat_estimate, 'r')
+plt.plot([],[], 'b.')
+plt.plot([],[], 'r--')
+plt.plot(t, quat_actual, 'b.', label = 'Truth')
+plt.plot(t, quat_estimate, 'r--', label = 'Estimate')
 plt.title('Truth vs Estimate')
+plt.xlabel('Time [s]')
+plt.ylabel('Quaternions')
+plt.legend(['Truth','Estimate'])
+plt.savefig('Truth vs estimate.png')
 
 plt.show()
-
-
-
-
