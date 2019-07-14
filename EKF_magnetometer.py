@@ -149,10 +149,10 @@ inertia = array([[1,.04,.05],
                  [.05, .03, 1.2]])
 inertia = identity(3)
 quaternion = array([1,0,0,0])
-dt = .1
-tspan = 60*60
+dt = 1.5
+tspan = 150*60
 
-simulate = False
+simulate = True
 if simulate:
     state = hstack([quaternion, angular_rate])
     
@@ -208,7 +208,7 @@ w_meas = vstack(w_meas)
 
 #x_posteriori = array(list(Quaternion.random()))[1:]
 x_posteriori = array(list(Quaternion(axis = [1,0,0], angle = 2)))
-P_posteriori = identity(4)*.5
+P_posteriori = identity(4)*1e-5
 
 B = inv(inertia)
 Q = ones((4,4))*1e-7
@@ -232,11 +232,11 @@ for mag_b, w_meas, second in zip(b_meas, w_meas, t):
     # indices = [x for x in range(4) if x != c]
     # x_trunc = x_posteriori[indices]
     B = get_B(eps, eta, inertia)
-    Q = B@B.T*1e-6
+    Q = B@B.T*1e-7
 
     state = hstack([x_posteriori, w_meas])
-    delta = dt/10
-    for i in range(10):
+    delta = dt/100
+    for i in range(100):
         dstate = propagate(0, state, inertia)
         state += dstate*delta
 
