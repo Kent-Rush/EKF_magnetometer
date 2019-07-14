@@ -119,6 +119,26 @@ def truncated_H(eps, eta, b_eci, c):
 
     return H_trunc
 
+def quat_mult(E1, n1, E2, n2):
+
+    # q1 *q2
+
+    E3 = n1*E2 + n2*E1 + crux(E1)@E2
+    n3 = n2*n1 - dot(E1, E2)
+
+    return E3, n3
+
+def custom_H(v, E, n):
+
+    qv, qw = quat_mult(v, 0, -E, n)
+    qx = qv[0]
+    qy = qv[1]
+    qz = qv[2]
+
+    return array([[ qx, qw, qz,-qy],
+                  [ qy,-qz, qw, qx],
+                  [ qz, qy,-qx, qw]])
+
 
 
 
@@ -187,7 +207,7 @@ w_meas = vstack(w_meas)
 #Simulate EKF
 
 #x_posteriori = array(list(Quaternion.random()))[1:]
-x_posteriori = array(list(Quaternion(axis = [1,0,0], angle = .1)))
+x_posteriori = array(list(Quaternion(axis = [1,0,0], angle = 2)))
 P_posteriori = identity(4)*.5
 
 B = inv(inertia)
@@ -207,7 +227,7 @@ for mag_b, w_meas, second in zip(b_meas, w_meas, t):
     eta = x_posteriori[0]
     eps = x_posteriori[1:]
     F = get_F( w_meas, dt)
-    H = get_H(eps, eta, b_eci)
+    H = custom_H(b_eci, eps, eta)
     
     # indices = [x for x in range(4) if x != c]
     # x_trunc = x_posteriori[indices]
@@ -227,7 +247,7 @@ for mag_b, w_meas, second in zip(b_meas, w_meas, t):
     #x_pred = F@x_posteriori
 
     P_pred = F@P_posteriori@F.T + Q
-    y = mag_b- quat2dcm(eps, eta)@b_eci
+    y = mag_b - H@x_pred
     errors.append(y)
 
     S = H@P_pred@H.T + R
